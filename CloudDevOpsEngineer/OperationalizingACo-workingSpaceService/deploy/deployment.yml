@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+   name: project3-uda
+   labels:
+      service: project3-uda
+spec:
+   replicas: 1
+   selector:
+      matchLabels:
+         service: project3-uda
+   template:
+      metadata:
+         labels:
+            service: project3-uda
+      spec:
+         containers:
+            - name: project3-uda
+              image: 941342104010.dkr.ecr.us-east-1.amazonaws.com/my-ecr:latest
+              imagePullPolicy: Always
+              livenessProbe:
+                 httpGet:
+                    path: /health_check
+                    port: 5153
+                 initialDelaySeconds: 8
+                 timeoutSeconds: 5
+              readinessProbe:
+                 httpGet:
+                    path: "/readiness_check"
+                    port: 5153
+                 initialDelaySeconds: 10
+                 timeoutSeconds: 10
+              envFrom:
+                 - secretRef:
+                      name: db-password
+                 - configMapRef:
+                      name: db-configmap
+              ports:
+                 - containerPort: 5153
+         restartPolicy: Always

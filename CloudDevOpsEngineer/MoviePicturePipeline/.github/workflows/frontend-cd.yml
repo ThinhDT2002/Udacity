@@ -1,0 +1,127 @@
+name: Front-end CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "starter/frontend/**"
+  workflow_dispatch:
+
+jobs:
+  linting:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code in repository
+        uses: actions/checkout@v4
+
+      - name: Using Node 16
+        uses: actions/setup-node@v3
+        with:
+          cache: "npm"
+          cache-dependency-path: starter/frontend/package-lock.json
+          node-version: 16
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: starter/frontend
+
+      - name: Run lint
+        run: npm run lint
+        working-directory: starter/frontend
+
+  testing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code in repository
+        uses: actions/checkout@v4
+
+      - name: Using Node 16
+        uses: actions/setup-node@v3
+        with:
+          cache: "npm"
+          cache-dependency-path: starter/frontend/package-lock.json
+          node-version: 16
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: starter/frontend
+
+      - name: Testing
+        run: npm run test
+        working-directory: starter/frontend
+
+  buiding:
+    needs: [linting, testing]
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Checkout code in repository
+        uses: actions/checkout@v4
+
+      - name: Using Node 16
+        uses: actions/setup-node@v3
+        with:
+          cache: "npm"
+          cache-dependency-path: starter/frontend/package-lock.json
+          node-version: 16
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: starter/frontend
+
+      - name: Testing
+        run: npm run test
+        working-directory: starter/frontend
+
+  deploy:
+    needs: [buiding]
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Checkout code in repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/backend
+          tags: |
+            type=sha  
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          context: starter/frontend
+          tag_with_sha: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            REACT_APP_MOVIE_API_URL=${{ vars.REACT_APP_MOVIE_API_URL }}
+      - name: Configure k8s cluster
+        run: aws eks update-kubeconfig --name cluster --region us-east-1
+      - name: Deploy to k8s
+        working-directory: starter/frontend/k8s
+        run: |
+          kustomize edit set image frontend=${{ steps.meta.outputs.tags }}
+          kustomize build | kubectl apply -f -

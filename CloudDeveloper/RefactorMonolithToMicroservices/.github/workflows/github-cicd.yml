@@ -1,0 +1,46 @@
+name: udagram-cicd
+
+on:
+   push:
+      branches:
+         - "main"
+
+jobs:
+   build-and-push:
+      runs-on: ubuntu-latest
+      strategy:
+         matrix:
+            include:
+               - image: reverseproxy
+                 dockerfile: udagram-reverseproxy/Dockerfile
+               - image: udagram-api-user
+                 dockerfile: udagram-api-user/Dockerfile
+               - image: udagram-api-feed
+                 dockerfile: udagram-api-feed/Dockerfile
+               - image: udagram-frontend
+                 dockerfile: udagram-frontend/Dockerfile
+      steps:
+         - name: Checkout
+           uses: actions/checkout@v4
+         - name: Login to Docker Hub
+           uses: docker/login-action@v3
+           with:
+              username: ${{ secrets.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
+         - name: Extract metadata for Docker
+           id: meta
+           uses: docker/metadata-action@v4
+           with:
+              images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+              tags: |
+                 # set latest tag for main branch
+                 type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+         - name: Set up Docker Buildx
+           uses: docker/setup-buildx-action@v3
+         - name: Build and push
+           uses: docker/build-push-action@v5
+           with:
+              context: .
+              file: ${{ matrix.dockerfile }}
+              push: true
+              tags: ${{ steps.meta.outputs.tags }}
